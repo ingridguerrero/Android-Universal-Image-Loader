@@ -24,7 +24,6 @@ import android.net.Uri;
 import com.nostra13.universalimageloader.core.DisplayImageOptions;
 import com.nostra13.universalimageloader.core.assist.ContentLengthInputStream;
 import com.nostra13.universalimageloader.utils.IoUtils;
-
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -36,6 +35,10 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.apache.commons.net.ftp.FTPFile;
 
 /**
  * Provides retrieving of {@link InputStream} of image by URI from network or file system or app resources.<br />
@@ -91,6 +94,8 @@ public class BaseImageDownloader implements ImageDownloader {
 				return getStreamFromAssets(imageUri, extra);
 			case DRAWABLE:
 				return getStreamFromDrawable(imageUri, extra);
+			case FTP:
+				return getStreamFromFTPNetwork(imageUri, extra);
 			case UNKNOWN:
 			default:
 				return getStreamFromOtherSource(imageUri, extra);
@@ -143,7 +148,42 @@ public class BaseImageDownloader implements ImageDownloader {
 		conn.setConnectTimeout(connectTimeout);
 		conn.setReadTimeout(readTimeout);
 		return conn;
+		
 	}
+	
+	protected InputStream getStreamFromFTPNetwork(String imageUri, Object extra) throws IOException {
+		int indexUrl 		= imageUri.indexOf("//")+1;
+		int indexUrlFinal   = imageUri.lastIndexOf(":");
+		int slash			= imageUri.lastIndexOf("/");
+		String ip = imageUri.substring(indexUrl+1, indexUrlFinal);
+		FTPClient client = new FTPClient();
+		client.connect(ip,20000);
+		client.login( "anonymous", "" );
+		client.setFileType(FTP.BINARY_FILE_TYPE);
+		client.enterLocalPassiveMode();
+		
+		InputStream imageStream = null;
+		FTPFile [] directories = client.listFiles();
+        long fileLength = (int)getFile(directories,imageUri.substring(slash+1)).getSize();
+		try {
+			imageStream =client.retrieveFileStream(imageUri.substring(slash+1));
+		} catch (IOException e) {
+			// Read all data to allow reuse connection (http://bit.ly/1ad35PY)
+			IoUtils.readAndCloseStream(imageStream);
+			throw e;
+		}
+		return new ContentLengthInputStream(new BufferedInputStream(imageStream, BUFFER_SIZE), fileLength);
+	}
+	
+	 public FTPFile getFile(FTPFile [] ftpFiles,String name){
+	        FTPFile musicFile = new FTPFile();
+	        for (FTPFile file : ftpFiles){
+	            if (file.getName().equals(name)){
+	                musicFile = file;
+	            }
+	        }
+	        return musicFile;
+	    }
 
 	/**
 	 * Retrieves {@link InputStream} of image by URI (image is located on the local file system or SD card).
